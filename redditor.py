@@ -8,6 +8,7 @@ CONFIG = "config.yml"
 API_URL = "https://api.pushshift.io/reddit/search/submission"
 
 class Redditor:
+
     def __init__(self):
         #initialize the praw.Reddit object
         with open(CONFIG, 'r') as f:
@@ -20,8 +21,18 @@ class Redditor:
                 print(error)
                 sys.exit()
         #initialize dataframe
-        self.df = pd.DataFrame(columns = ["Author", "Title", "Time Posted", "ID", "Comments", "Score"])
+        self.df = pd.DataFrame(columns = ["Author", "Title", "Time Posted", "ID", "Number of Comments", "Score"])
+
+    def praw_update(self, data):
+        fullnames_to_check = ['t3_' + x[3] for x in data] #'t3_' + x[3] gives us a fullname id (for the post) in the format t3_xxxxxx
+        updated_posts = [x for x in self.reddit.info(fullnames=fullnames_to_check)]
+        assert len(fullnames_to_check) == len(updated_posts) #we should've received as many posts as we sent. TODO: Add logic to fix data if we don't
+        for i, post in enumerate(updated_posts):
+            data[i][4] = post.num_comments
+            data[i][5] = post.score
+
     def scrape_timeframe(self, start_time, end_time, subreddit_name):
+        data = [] #temporary data buffer that will be appended to dataframe
         parameters = {'subreddit' : subreddit_name,
                       'sort' : 'asc',
                       'sort_type' : 'created_utc',
@@ -34,16 +45,17 @@ class Redditor:
             parameters['after'] = last_poll_time
             response = requests.get(API_URL, params = parameters)
             posts = response.json()['data']
-            temp_df = pd.DataFrame(columns = ["Author", "Title", "Time Posted", "ID", "Comments", "Score"])
             for i, post in enumerate(posts):
-                data = []
+                post_data = []
                 for field in ['author', 'title', 'created_utc', 'id', 'num_comments', 'score']:
-                    data.append(post[field])
-                temp_df.loc[i] = data
+                    post_data.append(post[field])
+                data.append(post_data)
             last_poll_time = posts[-1]['created_utc']
-            self.df = self.df.append(temp_df)
             if len(posts) < 1000:
                 has_more_results = False
+        self.praw_update(data)
+        self.df = self.df.append(data, ignore_index=True)
+
     def scrape_subreddit(self, subreddit_name, num_days):
         daylength = 60 * 60 * 24 #seconds * minutes * hours
         current_time = int(time.time())
@@ -52,16 +64,17 @@ class Redditor:
             before_time = current_time - x * daylength
             after_time = before_time - daylength
             self.scrape_timeframe(after_time, before_time, subreddit_name)
-    def save_csv(self):
-        self.df.to_csv("data.csv")
-    def fix_data(self):
-        print("Fixing data (this may take a while)")
-        for index, row in self.df.iterrows():
-            post = self.reddit.submission(id=row['ID'])
-            row['Score'] = post.score
-            row['Comments'] = post.num_comments
 
-bot = Redditor()
-bot.scrape_subreddit("pcmasterrace", 7)
-bot.fix_data()
-bot.save_csv()
+    def save_csv(self, filename):
+        self.df.to_csv(filename)
+
+
+if __name__ == "__main__":
+    bot = Redditor()
+
+    num_days = int(input("How many days to scrape? "))
+    sub_name = input("Scrape what subreddit? /r/")
+    save_name = input("Save to where? ")
+
+    bot.scrape_subreddit(sub_name, num_days)
+    bot.save_csv(save_name)
