@@ -1,0 +1,4 @@
+*.csv
+.vscode
+config.yml
+/logs
