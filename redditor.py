@@ -6,7 +6,7 @@ import time
 import pandas as pd
 CONFIG = "config.yml"
 API_URL = "https://api.pushshift.io/reddit/search/submission"
-
+DF_COLUMNS = ["Author", "Title", "Time Posted", "ID", "Number of Comments", "Score"]
 class Redditor:
 
     def __init__(self):
@@ -21,7 +21,7 @@ class Redditor:
                 print(error)
                 sys.exit()
         #initialize dataframe
-        self.df = pd.DataFrame(columns = ["Author", "Title", "Time Posted", "ID", "Number of Comments", "Score"])
+        self.df = pd.DataFrame(columns = DF_COLUMNS)
 
     def praw_update(self, data):
         fullnames_to_check = ['t3_' + x[3] for x in data] #'t3_' + x[3] gives us a fullname id (for the post) in the format t3_xxxxxx
@@ -54,7 +54,8 @@ class Redditor:
             if len(posts) < 1000:
                 has_more_results = False
         self.praw_update(data)
-        self.df = self.df.append(data, ignore_index=True)
+        temp_df = pd.DataFrame(data, columns = DF_COLUMNS)
+        self.df = pd.concat([self.df, temp_df])
 
     def scrape_subreddit(self, subreddit_name, num_days):
         daylength = 60 * 60 * 24 #seconds * minutes * hours
